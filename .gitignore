@@ -1,0 +1,16 @@
+*.pyc
+*~
+build
+build*
+xcuserdata
+*.xcuserstate
+*.xcworkspace
+*.pyc
+.DS_Store
+.console.log
+cabal-dev
+Setup.hs
+dist
+config.hpp
+.cabal-sandbox
+cabal.sandbox.config
