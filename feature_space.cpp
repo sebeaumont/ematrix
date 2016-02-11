@@ -1,4 +1,4 @@
-// feature space, co-occurrence etc.
+// feature space, co-occurrence, logliklihood filtering
 
 #include <iostream>
 #include <fstream>
@@ -42,7 +42,6 @@ public:
     try {
       return _left.at(l);
     } catch (std::out_of_range& ex) {
-      //std::cerr << "index added key:\t" << l << std::endl;
       std::size_t i = _left.size();
       _left[l] = i;
       _right[i] = l;
@@ -221,8 +220,8 @@ std::unique_ptr<sparse_matrix> feature_matrix_from_stream(std::istream& in, inde
   std::string last_sample;
   feature_values_t feature_indexes;
 
-  // read samples and feature tsv list from in stream N.B. assumed
-  // that input is grouped (sorted input) by sample; else we would have
+  // read samples and feature tsv list from in stream
+  // N.B. it is assumed that input is grouped (sorted input) by sample; else we would have
   // to keep a map of index vectors by frame.
   
   std::string sample;
@@ -278,13 +277,15 @@ std::unique_ptr<sparse_matrix> feature_matrix_from_stream(std::istream& in, inde
     const element_t v = M->coeffRef(ti->row(), ti->col());
     M->coeffRef(ti->row(), ti->col()) = aggfn(v, ti->value());
   }
+  
   M->makeCompressed();
   return M;
 }
 
 
-/////////////////////
+//////////////////////
 // cosine similarity
+/////////////////////
 
 inline const double cosine_similarity(const sparse_vector& u, const sparse_vector& v, const int n) {
   
@@ -393,6 +394,8 @@ void feature_matrix(std::unique_ptr<sparse_matrix>& S, const index_map& features
 }
 
 
+// most of this logic derived from Mahout logl Java implementation
+
 // x log x
 static inline double xlogx(double x) {
   return x == 0 ? 0.0 : x * log(x);
@@ -428,6 +431,9 @@ std::unique_ptr<sparse_matrix> logl_matrix(std::unique_ptr<sparse_matrix>& S, co
   // accumulate ijvs for logl_matrix based on S and totals
   triplet_vec ijvs;
   ijvs.reserve(S->cols());
+
+  // keep track of max logl
+  double max_llr = 0;
   
   // foreach feature -> feature occurrence count witnessed by
   // we can iterate over the CSC matrix where s[i,j] != 0
@@ -448,8 +454,11 @@ std::unique_ptr<sparse_matrix> logl_matrix(std::unique_ptr<sparse_matrix>& S, co
       // compute scaled loglr
       double llr = te * log_likelihood_ratio(k_11, k_12, k_21, k_22);
       ijvs.push_back(triplet(j, i, llr));
+      if (llr > max_llr) max_llr = llr;
     }
   }
+
+  std::cerr << "max llr: " << max_llr << std::endl;
   
   // logl matrix will be same shape as input cooc-matrix
   std::unique_ptr<sparse_matrix> L(new sparse_matrix(S->cols(), S->cols()));
@@ -459,6 +468,9 @@ std::unique_ptr<sparse_matrix> logl_matrix(std::unique_ptr<sparse_matrix>& S, co
   return L;
 }
 
+////////////////////////////////////////////
+// sparse binary matrix from filtered input
+////////////////////////////////////////////
 
 std::unique_ptr<sparse_matrix> binary_filter(std::unique_ptr<sparse_matrix>& L, double logl) {
   // iterate L and create new matrix where L exceeds threshold
@@ -525,7 +537,6 @@ int main(int argc, char** argv) {
 
   desc.add_options()
     ("help", "Feature space analysis utility\n\
-              \toutput (stdout) feature# cos ref-sum sample-sum\n\
               \tinput sample on stdin \n\
               \tif no reference data is supplied output feature vectors for samples\n\
               \tusing aggfunc to reduce feature occurrence values in sample, feature, value input.")
@@ -567,10 +578,13 @@ int main(int argc, char** argv) {
     // compute logl matrix
     std::unique_ptr<sparse_matrix> L = logl_matrix(A, feature_totals);
 
+    std::cerr << "logL entries: " << L->nonZeros() << std::endl;
+    
     if (logl > 0) {
       std::cerr << "output filter with logL-threshold: " << logl << std::endl;
       // compute filtered co-occurrence matrix
       std::unique_ptr<sparse_matrix> F = binary_filter(L, logl);
+      std::cerr << "filtered binary: " << F->nonZeros() << std::endl;
       // render filtered matrix
       feature_matrix(F, features, std::cout);
       
