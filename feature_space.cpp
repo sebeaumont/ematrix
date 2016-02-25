@@ -472,8 +472,8 @@ std::unique_ptr<sparse_matrix> logl_matrix(std::unique_ptr<sparse_matrix>& S, co
 // sparse binary matrix from filtered input
 ////////////////////////////////////////////
 
-std::unique_ptr<sparse_matrix> binary_filter(std::unique_ptr<sparse_matrix>& L, double logl) {
-  // iterate L and create new matrix where L exceeds threshold
+std::unique_ptr<sparse_matrix> hipass_filter(std::unique_ptr<sparse_matrix>& C, std::unique_ptr<sparse_matrix>& L, double logl) {
+  // iterate L and create new matrix F from C where L exceeds threshold
 
   triplet_vec ijvs;
   ijvs.reserve(L->cols());
@@ -487,7 +487,7 @@ std::unique_ptr<sparse_matrix> binary_filter(std::unique_ptr<sparse_matrix>& L, 
       double llr = it.value(); // value
 
       if (llr > logl)
-        ijvs.push_back(triplet(i, j, 1.0));
+        ijvs.push_back(triplet(i, j, C->coeffRef(i,j)));
     }
   }
   
@@ -583,8 +583,8 @@ int main(int argc, char** argv) {
     if (logl > 0) {
       std::cerr << "output filter with logL-threshold: " << logl << std::endl;
       // compute filtered co-occurrence matrix
-      std::unique_ptr<sparse_matrix> F = binary_filter(L, logl);
-      std::cerr << "filtered binary: " << F->nonZeros() << std::endl;
+      std::unique_ptr<sparse_matrix> F = hipass_filter(L, A, logl);
+      std::cerr << "filtered co-oc: " << F->nonZeros() << std::endl;
       // render filtered matrix
       feature_matrix(F, features, std::cout);
       
