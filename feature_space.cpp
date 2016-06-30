@@ -8,6 +8,8 @@
 #include <boost/program_options.hpp>
 #include <Eigen/SparseCore>
 
+#include "sparse_matrix_io.hpp"
+
 /////////////////////////////////////////////////////////////////////////
 // types we need for a sparse co-occurrence matrix and similarity scores
 //
@@ -375,7 +377,7 @@ void feature_vectors(std::unique_ptr<sparse_matrix>& S, const index_map& feature
   }
 }
 
-
+/////////////////////////////////////////////////////////////////
 // output sparse matrix of pairwise feature values as a tsv list
 
 void feature_matrix(std::unique_ptr<sparse_matrix>& S, const index_map& features, std::ostream& outs) {
@@ -537,11 +539,14 @@ int main(int argc, char** argv) {
 
   desc.add_options()
     ("help", "Feature space analysis utility\n\
-              \tinput sample on stdin \n\
-              \tif no reference data is supplied output feature vectors for samples\n\
+              \tinput samples are read from stdin \n\
+              \tif no comparison data is supplied then output feature vectors for samples\n\
               \tusing aggfunc to reduce feature occurrence values in sample, feature, value input.")
-    ("aggfunc", po::value<std::string>()->default_value("max"), "feature aggregation operator: one of: max, min, sum, avg, cnt <max>")
-    ("logl", po::value<float>(), "compute log likelihood of 1st order co-occurrence matrix and use this threshold to filter statistically significant co-occurrence")
+    ("aggfunc", po::value<std::string>()->default_value("max"),
+     "feature aggregation operator: one of: max, min, sum, avg, cnt <max>")
+    ("logl", po::value<float>(),
+     "compute log likelihood of 1st order co-occurrence matrix and use the given threshold\
+      to filter statistically significant co-occurrences")
     ("reference", po::value<std::string>(), "file of reference observations (should be a valid path)");
 
   // announce
@@ -585,6 +590,8 @@ int main(int argc, char** argv) {
       // compute filtered co-occurrence matrix
       std::unique_ptr<sparse_matrix> F = hipass_filter(L, A, logl);
       std::cerr << "filtered co-oc: " << F->nonZeros() << std::endl;
+      // UC: save matrix
+      serialize(*F);
       // render filtered matrix
       feature_matrix(F, features, std::cout);
       
