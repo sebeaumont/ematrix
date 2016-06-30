@@ -24,9 +24,10 @@ add_definitions("-std=c++11")
 add_definitions("-O3")
 add_definitions("-mavx")
 add_definitions("-funroll-loops")
-add_definitions("-fvectorize")
-add_definitions("-fslp-vectorize")
-add_definitions("-fslp-vectorize-aggressive")
+
+#add_definitions("-fvectorize")
+#add_definitions("-fslp-vectorize")
+#add_definitions("-fslp-vectorize-aggressive")
 
 # todo library?
 # add_library(fspace feature_space.cpp)
