@@ -6,20 +6,10 @@
 #include <set>
 #include <cmath>
 #include <boost/program_options.hpp>
-#include <Eigen/SparseCore>
 
+#include "sparse_matrix.hpp"
 #include "sparse_matrix_io.hpp"
 
-/////////////////////////////////////////////////////////////////////////
-// types we need for a sparse co-occurrence matrix and similarity scores
-//
-
-typedef float element_t;
-typedef Eigen::SparseMatrix<element_t> sparse_matrix;
-typedef Eigen::SparseVector<element_t> sparse_vector;
-typedef Eigen::Triplet<element_t>      triplet;
-typedef std::vector<triplet>           triplet_vec;
-typedef Eigen::VectorXf                vector;
 
 /////////////////////////////////////
 // custom bimap with size_t indexes 
@@ -63,24 +53,24 @@ typedef index_bimap<std::string> index_map;
 // function objects for aggregation binops
 
 struct max { 
-  float operator()(float x, float y) const { return x > y ? x : y; }; 
+  scalar_t operator()(scalar_t x, scalar_t y) const { return x > y ? x : y; }; 
 };
 
 struct min { 
-  float operator()(float x, float y) const { return x < y && x ? x : y; }; 
+  scalar_t operator()(scalar_t x, scalar_t y) const { return x < y && x ? x : y; }; 
 };
 
 struct sum { 
-  float operator()(float x, float y) const { return x + y; }; 
+  scalar_t operator()(scalar_t x, scalar_t y) const { return x + y; }; 
 };
 
 struct avg {
-  float operator()(float x, float y) const { return (x + y) / 2.0; }; 
+  scalar_t operator()(scalar_t x, scalar_t y) const { return (x + y) / 2.0; }; 
 };
 
 struct cnt {
   // N.B. assumes x, y are in [0,1]
-  float operator()(float x, float y) const { return ceil(x) + ceil(y); };
+  scalar_t operator()(scalar_t x, scalar_t y) const { return ceil(x) + ceil(y); };
 };
 
 
@@ -138,7 +128,7 @@ std::unique_ptr<sparse_matrix> cooc_matrix_from_stream(std::istream& in,
   
   std::string frame;
   std::string feature;
-  float value;
+  scalar_t value;
   
   while (in >> frame >> feature >> value) {
 
@@ -187,7 +177,7 @@ std::unique_ptr<sparse_matrix> cooc_matrix_from_stream(std::istream& in,
 // incrementally build up the triplet vector
 //
 
-typedef std::pair<int,float> feature_pair;
+typedef std::pair<int,scalar_t> feature_pair;
 typedef std::vector<feature_pair> feature_values_t;
 
 inline void sample_triplets(const int sample_id, const feature_values_t& feature_indexes, triplet_vec& triplets) {
@@ -199,7 +189,7 @@ inline void sample_triplets(const int sample_id, const feature_values_t& feature
 
 // aggregation binop 
 
-typedef boost::function<float (float, float)> aggfn_t;
+typedef boost::function<scalar_t (scalar_t, scalar_t)> aggfn_t;
 
 
 //////////////////////////////////////////////////
@@ -228,7 +218,7 @@ std::unique_ptr<sparse_matrix> feature_matrix_from_stream(std::istream& in, inde
   
   std::string sample;
   std::string feature;
-  float value;
+  scalar_t value;
   
   while (in >> sample >> feature >> value) {
 
@@ -276,7 +266,7 @@ std::unique_ptr<sparse_matrix> feature_matrix_from_stream(std::istream& in, inde
   // apply a specific reduction function instead of default (max, min, sum, avg...)
   // M->setFromTriplets(triplets.begin(), triplets.end());
   for (auto ti = triplets.begin(); ti != triplets.end(); ++ti) {
-    const element_t v = M->coeffRef(ti->row(), ti->col());
+    const scalar_t v = M->coeffRef(ti->row(), ti->col());
     M->coeffRef(ti->row(), ti->col()) = aggfn(v, ti->value());
   }
   
@@ -427,15 +417,16 @@ static inline double log_likelihood_ratio(double k11, double k12, double k21, do
 // logl feature cooc matrix
 /////////////////////////////
 
-std::unique_ptr<sparse_matrix> logl_matrix(std::unique_ptr<sparse_matrix>& S, const vector& feature_totals) {
+std::unique_ptr<sparse_matrix> logl_matrix(std::unique_ptr<sparse_matrix>& S, const vector& feature_totals, const double llr_eps) {
   // total all features
-  float te = feature_totals.sum();
+  scalar_t te = feature_totals.sum();
   // accumulate ijvs for logl_matrix based on S and totals
   triplet_vec ijvs;
   ijvs.reserve(S->cols());
 
   // keep track of max logl
   double max_llr = 0;
+  double min_llr = 10E20;
   
   // foreach feature -> feature occurrence count witnessed by
   // we can iterate over the CSC matrix where s[i,j] != 0
@@ -453,14 +444,18 @@ std::unique_ptr<sparse_matrix> logl_matrix(std::unique_ptr<sparse_matrix>& S, co
       double k_12 = feature_totals[j] - ab;   // B but not A
       double k_21 = feature_totals[i] - ab;   // A but not B
       double k_22 = te - (feature_totals[i] + feature_totals[j]); // neither 
+
       // compute scaled loglr
       double llr = te * log_likelihood_ratio(k_11, k_12, k_21, k_22);
-      ijvs.push_back(triplet(j, i, llr));
+      // update max llr
       if (llr > max_llr) max_llr = llr;
+      if (llr < min_llr) min_llr = llr;
+      // help sparsity of L and only save if greater than lower bound llr_eps
+      if (llr > llr_eps) ijvs.push_back(triplet(j, i, llr));
     }
   }
 
-  std::cerr << "max llr: " << max_llr << std::endl;
+  std::cerr << "llr: [" << min_llr << "," << max_llr << "]" << std::endl;
   
   // logl matrix will be same shape as input cooc-matrix
   std::unique_ptr<sparse_matrix> L(new sparse_matrix(S->cols(), S->cols()));
@@ -470,26 +465,27 @@ std::unique_ptr<sparse_matrix> logl_matrix(std::unique_ptr<sparse_matrix>& S, co
   return L;
 }
 
-////////////////////////////////////////////
-// sparse binary matrix from filtered input
-////////////////////////////////////////////
 
-std::unique_ptr<sparse_matrix> hipass_filter(std::unique_ptr<sparse_matrix>& C, std::unique_ptr<sparse_matrix>& L, double logl) {
+//////////////////////////////////////
+// sparse matrix from filtered input
+//////////////////////////////////////
+
+std::unique_ptr<sparse_matrix> hipass_filter(std::unique_ptr<sparse_matrix>& C, std::unique_ptr<sparse_matrix>& L, const double logl) {
   // iterate L and create new matrix F from C where L exceeds threshold
 
   triplet_vec ijvs;
   ijvs.reserve(L->cols());
   
-  for (int j = 0; j < L->cols(); ++j) {
+  for (int j = 0; j < L->outerSize(); ++j) {
     
-    sparse_vector u = L->col(j); // column vector
+    //sparse_vector u = L->col(j); // column vector
 
-    for (sparse_vector::InnerIterator it(u); it; ++it) {
+    for (sparse_matrix::InnerIterator it(*L, j); it; ++it) {
       int i = it.index();      // row index
       double llr = it.value(); // value
-
-      if (llr > logl)
-        ijvs.push_back(triplet(i, j, C->coeffRef(i,j)));
+      assert(it.col() == j);  // XXX
+      // if logl threhold reached add source matrix value to output
+      if (llr > logl) ijvs.push_back(triplet(i, j, C->coeffRef(i,j)));
     }
   }
   
@@ -544,9 +540,12 @@ int main(int argc, char** argv) {
               \tusing aggfunc to reduce feature occurrence values in sample, feature, value input.")
     ("aggfunc", po::value<std::string>()->default_value("max"),
      "feature aggregation operator: one of: max, min, sum, avg, cnt <max>")
-    ("logl", po::value<float>(),
+    ("logl", po::value<double>(),
      "compute log likelihood of 1st order co-occurrence matrix and use the given threshold\
       to filter statistically significant co-occurrences")
+    ("logl_eps", po::value<double>()->default_value(1),
+     "lower bound of eps in logl matrix to assist sparsity")
+
     ("reference", po::value<std::string>(), "file of reference observations (should be a valid path)");
 
   // announce
@@ -566,13 +565,14 @@ int main(int argc, char** argv) {
     
   } else if (opts.count("logl")) {
 
-    float logl = opts["logl"].as<float>();
+    double logl = opts["logl"].as<double>();
+    double logl_eps = opts["logl_eps"].as<double>();
     // compute logl of co-occurence and output both matrices
     
     std::cerr << "creating pairwise (1st order) co-occurrence matrix from data..." << std::endl;
     std::unique_ptr<sparse_matrix> A = cooc_matrix_from_stream(std::cin, features);
 
-    std::cerr << A->nonZeros() << "/" << A->size() << std::endl; 
+    std::cerr << 100 * ((double) A->nonZeros() / A->size()) << "%" << std::endl; 
 
     // sparse columnwise sum: matrix * 1-vector
     vector ones = vector::Ones(A->cols());
@@ -581,23 +581,26 @@ int main(int argc, char** argv) {
     vector feature_totals = ((*A) * ones) + (A->transpose() * ones);
 
     // compute logl matrix
-    std::unique_ptr<sparse_matrix> L = logl_matrix(A, feature_totals);
+    std::unique_ptr<sparse_matrix> L = logl_matrix(A, feature_totals, logl_eps);
+    
+    std::cerr << "logL entries: " << L->nonZeros() << " density: " << 100 * ((double) L->nonZeros() / L->size()) << "%" << std::endl; 
 
-    std::cerr << "logL entries: " << L->nonZeros() << std::endl;
     
     if (logl > 0) {
-      std::cerr << "output filter with logL-threshold: " << logl << std::endl;
+      
+      std::cerr << "save filtered co-oc matrix with logL-threshold: " << logl << std::endl;
       // compute filtered co-occurrence matrix
-      std::unique_ptr<sparse_matrix> F = hipass_filter(L, A, logl);
-      std::cerr << "filtered co-oc: " << F->nonZeros() << std::endl;
-      // UC: save matrix
+      std::unique_ptr<sparse_matrix> F = hipass_filter(A, L, logl);
+      std::cerr << "filtered co-oc: " << F->nonZeros() << std::endl; // XXX why is this 0?
+      // XXXX UC: save matrix
       serialize(*F);
       // render filtered matrix
-      feature_matrix(F, features, std::cout);
+      //feature_matrix(F, features, std::cout);
       
     } else {
-      std::cerr << "output logl matrix: " << logl << std::endl;
-      feature_matrix(L, features, std::cout);
+      std::cerr << "save logl matrix: " << L->nonZeros() << std::endl;
+      serialize(*L);
+      //feature_matrix(L, features, std::cout);
     }
     
     
