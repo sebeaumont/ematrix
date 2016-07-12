@@ -1,46 +1,24 @@
 // feature space, co-occurrence, logliklihood filtering
 
+// std libs
+
 #include <iostream>
 #include <fstream>
 #include <vector>
 #include <set>
 #include <cmath>
+
+// contrib library headers
+
 #include <boost/program_options.hpp>
 
+// local headers
+
+#include "index_bimap.hpp"
 #include "sparse_matrix.hpp"
 #include "sparse_matrix_io.hpp"
 
 
-/////////////////////////////////////
-// custom bimap with size_t indexes 
-
-template <typename L>
-class index_bimap {
-  std::map<L, std::size_t> _left;
-  std::map<std::size_t, L> _right;
-  
-public:
-  
-  inline void insert(const L& l, const std::size_t& r) {
-    _left[l] = r;
-    _right[r] = l;
-  }
-  
-  inline const std::size_t left(const L& l) const { return _left.at(l); }
-  
-  inline const L right(const std::size_t& r) const { return _right.at(r); }
-  
-  inline const std::size_t ensure(const L& l) {
-    try {
-      return _left.at(l);
-    } catch (std::out_of_range& ex) {
-      std::size_t i = _left.size();
-      _left[l] = i;
-      _right[i] = l;
-      return i;
-    }
-  }
-};
 
 
 ////////////////////////////////////////////
@@ -65,112 +43,13 @@ struct sum {
 };
 
 struct avg {
-  scalar_t operator()(scalar_t x, scalar_t y) const { return (x + y) / 2.0; }; 
+  scalar_t operator()(scalar_t x, scalar_t y) const { return (x + y) / 2; }; 
 };
 
 struct cnt {
   // N.B. assumes x, y are in [0,1]
   scalar_t operator()(scalar_t x, scalar_t y) const { return ceil(x) + ceil(y); };
 };
-
-
-//////////////////////////////////////
-// i,j,v, csc based sparse matrix ops
-//////////////////////////////////////
-
-
-int inline add_pairwise_triplets(const std::vector<int>& indexes, triplet_vec& triplets) {
-  // create non-redundant pairwise associations for a set of indexes and add to triplet vector
-  // 1. create ordered set of indexes
-  std::set<int> idxset(indexes.begin(), indexes.end());
-  int n = 0;
-
-  // 2. create pairwise combinatations of indexes  
-  for (auto first = idxset.begin(); first != idxset.end(); ++first) {
-    for (auto next = std::next(first); next != idxset.end(); ++next) {
-      // 3. add i,j,v triple to triplets
-      triplets.push_back(triplet(*first, *next, 1));      
-      ++n;
-    }
-  }  
-  // return number of combinations i.e. binomial coefficient which in
-  // this case is (choose 2 from idxset.size)
-  return n;
-}
-
-
-/////////////////////////////////////////////////////////////////
-// create a sparse co-occurrence matrix from input data stream:
-// frame, feature, value
-/////////////////////////////////////////////////////////////////
-
-std::unique_ptr<sparse_matrix> cooc_matrix_from_stream(std::istream& in,
-                                                       index_map& fmap,
-                                                       const int population_guess = (10 * 1024 * 1024)) {
-  
-  // accumulate list of triplets (i,j,v) for sparse matrix creation
-  triplet_vec triplets;
-  triplets.reserve(population_guess);
-
-  // accumulators
-  int max_index = 0;
-  int population = 0;
-  int samples = 0;
-  
-  // state
-  bool first = true;
-  std::string last_frame;
-  std::vector<int> frame_indexes;
-
-  // read frames and feature tsv list from in stream N.B. assumed that
-  // input is sorted by frame else we would have to keep a map of
-  // index vectors by frame.
-  
-  std::string frame;
-  std::string feature;
-  scalar_t value;
-  
-  while (in >> frame >> feature >> value) {
-
-    // get feature index 
-    std::size_t index = fmap.ensure(feature);
-    
-    ++samples;
-    max_index = index > max_index ? index : max_index;
-
-    // accumulate frame indexes then create combinations
-    if (first) {
-      last_frame = frame;
-      first = false;
-
-    } else if (frame != last_frame) {
-      // frame change -- accumulate (i,j,v) for previous frames pariwise combinations of features (frame_indexes)
-      // i.e. frames cause grouping and aggregation (sum) of feature counts in context 
-      population += add_pairwise_triplets(frame_indexes, triplets);
-      frame_indexes.clear(); // reset for new frame
-    }
-    
-    frame_indexes.push_back(index);
-    last_frame = frame;
-  }
-
-  // last frame
-  population += add_pairwise_triplets(frame_indexes, triplets);
-
-  // sample stats
-  std::cerr << "samples:\t" << samples << std::endl
-            << "max index:\t" << max_index << std::endl
-            << "population:\t" << population << std::endl;
-
-  // create the sparse matrix from final list of (i,j,v) triplets
-  // -- by default multiple i,j pairs are summed over
-  std::unique_ptr<sparse_matrix> M(new sparse_matrix(max_index+1, max_index+1));
-  M->setFromTriplets(triplets.begin(), triplets.end());
-
-  std::cerr << "pairs:\t" << M->nonZeros() << std::endl;
-  M->makeCompressed(); // csc?
-  return M;
-}
 
 
 /////////////////////////////////////////////
@@ -562,47 +441,6 @@ int main(int argc, char** argv) {
   if (opts.count("help")) {
     std::cerr << desc <<  std::endl;
     return 1;
-    
-  } else if (opts.count("logl")) {
-
-    double logl = opts["logl"].as<double>();
-    double logl_eps = opts["logl_eps"].as<double>();
-    // compute logl of co-occurence and output both matrices
-    
-    std::cerr << "creating pairwise (1st order) co-occurrence matrix from data..." << std::endl;
-    std::unique_ptr<sparse_matrix> A = cooc_matrix_from_stream(std::cin, features);
-
-    std::cerr << 100 * ((double) A->nonZeros() / A->size()) << "%" << std::endl; 
-
-    // sparse columnwise sum: matrix * 1-vector
-    vector ones = vector::Ones(A->cols());
-
-    // gets around adding transpose with wrong storage order...
-    vector feature_totals = ((*A) * ones) + (A->transpose() * ones);
-
-    // compute logl matrix
-    std::unique_ptr<sparse_matrix> L = logl_matrix(A, feature_totals, logl_eps);
-    
-    std::cerr << "logL entries: " << L->nonZeros() << " density: " << 100 * ((double) L->nonZeros() / L->size()) << "%" << std::endl; 
-
-    
-    if (logl > 0) {
-      
-      std::cerr << "save filtered co-oc matrix with logL-threshold: " << logl << std::endl;
-      // compute filtered co-occurrence matrix
-      std::unique_ptr<sparse_matrix> F = hipass_filter(A, L, logl);
-      std::cerr << "filtered co-oc: " << F->nonZeros() << std::endl; // XXX why is this 0?
-      // XXXX UC: save matrix
-      serialize(*F);
-      // render filtered matrix
-      //feature_matrix(F, features, std::cout);
-      
-    } else {
-      std::cerr << "save logl matrix: " << L->nonZeros() << std::endl;
-      serialize(*L);
-      //feature_matrix(L, features, std::cout);
-    }
-    
     
   } else if (!opts.count("reference")) {
     

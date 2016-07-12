@@ -10,10 +10,14 @@ int main(int argc, char *argv[]) {
   sparse_matrix B;
   
   // read matrix from stdin
-  assert(deserialize(B));
+  if (deserialize_matrix(B)) {
   
-  cout << B.nonZeros() << endl;   
-  cout << B.size() << endl;       
-
-  return 1;
+    cerr << B.nonZeros() << endl;   
+    cerr << B.size() << endl;
+    return 1;
+    
+  } else {
+    cerr << "couldn't deserialize matrix on stdin!" << endl;
+    return 0;
+  }
 }

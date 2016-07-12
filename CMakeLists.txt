@@ -125,8 +125,28 @@ include_directories(${EIGEN3_INCLUDE_DIR})
 #####################
 # command line tools
 
-add_executable (feature_space feature_space.cpp)
-target_link_libraries(feature_space ${Boost_LIBRARIES})
+# deprecated monolith
+#add_executable (feature_space feature_space.cpp)
+#target_link_libraries(feature_space ${Boost_LIBRARIES})
+
+
+# get samples into sparse cooc matrix 
+add_executable (samples2cooc samples2cooc.cpp)
+
+
+# logl from cooc 
+add_executable (cooc2logl cooc2logl.cpp)
+target_link_libraries(cooc2logl ${Boost_LIBRARIES})
+
+# logl filter 
+add_executable (loglfilter loglfilter.cpp)
+target_link_libraries(loglfilter ${Boost_LIBRARIES})
+
+
+# matrix inspector
+add_executable (showmat showmat.cpp)
+
+
 
 # test io
 add_executable (testio testio.cpp)

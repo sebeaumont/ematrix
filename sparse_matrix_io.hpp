@@ -12,7 +12,7 @@
 /// takes an optional std::ostream to write matrix representation
 
 template <typename ScalarT, int options, typename IndexT>
-bool serialize(Eigen::SparseMatrix<ScalarT, options, IndexT>& m, std::ostream& outs=std::cout) {
+bool serialize_matrix(Eigen::SparseMatrix<ScalarT, options, IndexT>& m, std::ostream& outs=std::cout) {
   
   if (outs.good()) {
     
@@ -45,7 +45,7 @@ bool serialize(Eigen::SparseMatrix<ScalarT, options, IndexT>& m, std::ostream& o
 
 // template function to deserialize Eigen::SparseMatrix<...>
 template <typename ScalarT, int options, typename IndexT>
-bool deserialize(Eigen::SparseMatrix<ScalarT, options, IndexT>& m, std::istream& ins=std::cin) {
+bool deserialize_matrix(Eigen::SparseMatrix<ScalarT, options, IndexT>& m, std::istream& ins=std::cin) {
   
   if (ins.good()) {
 
