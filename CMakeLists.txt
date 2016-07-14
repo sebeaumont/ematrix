@@ -143,6 +143,10 @@ add_executable (loglfilter loglfilter.cpp)
 target_link_libraries(loglfilter ${Boost_LIBRARIES})
 
 
+# feature space inspector
+add_executable (show_features show_features.cpp)
+
+
 # matrix inspector
 add_executable (showmat showmat.cpp)
 

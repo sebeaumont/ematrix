@@ -20,13 +20,6 @@
 
 
 
-
-////////////////////////////////////////////
-// map types for key aggregation/reduction
-
-typedef index_bimap<std::string> index_map;
-
-
 ////////////////////////////////////////////
 // function objects for aggregation binops
 
@@ -229,7 +222,10 @@ void cosine_scores(std::unique_ptr<sparse_matrix>& A, std::unique_ptr<sparse_mat
 ///////////////////////////
 // output feature vectors
 
-void feature_vectors(std::unique_ptr<sparse_matrix>& S, const index_map& features, const index_map& samples, std::ostream& outs) {
+void show_feature_vectors(std::unique_ptr<sparse_matrix>& S,
+                          const index_map& features,
+                          const index_map& samples,
+                          std::ostream& outs) {
 
   const int n_samples = S->cols();
   
@@ -246,10 +242,13 @@ void feature_vectors(std::unique_ptr<sparse_matrix>& S, const index_map& feature
   }
 }
 
+
 /////////////////////////////////////////////////////////////////
 // output sparse matrix of pairwise feature values as a tsv list
 
-void feature_matrix(std::unique_ptr<sparse_matrix>& S, const index_map& features, std::ostream& outs) {
+void show_feature_matrix(std::unique_ptr<sparse_matrix>& S,
+                         const index_map& features,
+                         std::ostream& outs) {
 
   const int n = S->cols();
   
@@ -262,117 +261,6 @@ void feature_matrix(std::unique_ptr<sparse_matrix>& S, const index_map& features
       outs << it.value() << "\t" << features.right(i) << "\t" << features.right(it.index()) << std::endl;
     }
   }
-}
-
-
-// most of this logic derived from Mahout logl Java implementation
-
-// x log x
-static inline double xlogx(double x) {
-  return x == 0 ? 0.0 : x * log(x);
-}
-
-// Shannon entropy...
-static inline double entropy2(double a, double b) {
-  return xlogx(a + b) - xlogx(a) - xlogx(b);
-}
-  
-
-static inline double entropy4(double a, double b, double c, double d) {
-  return xlogx(a + b + c + d) - xlogx(a) - xlogx(b) - xlogx(c) - xlogx(d);
-}
-
-static inline double log_likelihood_ratio(double k11, double k12, double k21, double k22) {
-  double r_entropy = entropy2(k11 + k12, k21 + k22);
-  double c_entropy = entropy2(k11 + k21, k12 + k22);
-  double m_entropy = entropy4(k11, k12, k21, k22);
-  if (r_entropy + c_entropy < m_entropy) return 0;
-  else return 2.0 * (r_entropy + c_entropy - m_entropy);
-}
-
-
-
-/////////////////////////////
-// logl feature cooc matrix
-/////////////////////////////
-
-std::unique_ptr<sparse_matrix> logl_matrix(std::unique_ptr<sparse_matrix>& S, const vector& feature_totals, const double llr_eps) {
-  // total all features
-  scalar_t te = feature_totals.sum();
-  // accumulate ijvs for logl_matrix based on S and totals
-  triplet_vec ijvs;
-  ijvs.reserve(S->cols());
-
-  // keep track of max logl
-  double max_llr = 0;
-  double min_llr = 10E20;
-  
-  // foreach feature -> feature occurrence count witnessed by
-  // we can iterate over the CSC matrix where s[i,j] != 0
-
-  for (int i = 0; i < S->cols(); ++i) {
-    
-    sparse_vector u = S->col(i); // column vector
-
-    for (sparse_vector::InnerIterator it(u); it; ++it) {
-      int j = it.index();
-      double ab = it.value();
-
-      // compute contingency table as in Dunning
-      double k_11 = ab; // A(i) and B(j) together
-      double k_12 = feature_totals[j] - ab;   // B but not A
-      double k_21 = feature_totals[i] - ab;   // A but not B
-      double k_22 = te - (feature_totals[i] + feature_totals[j]); // neither 
-
-      // compute scaled loglr
-      double llr = te * log_likelihood_ratio(k_11, k_12, k_21, k_22);
-      // update max llr
-      if (llr > max_llr) max_llr = llr;
-      if (llr < min_llr) min_llr = llr;
-      // help sparsity of L and only save if greater than lower bound llr_eps
-      if (llr > llr_eps) ijvs.push_back(triplet(j, i, llr));
-    }
-  }
-
-  std::cerr << "llr: [" << min_llr << "," << max_llr << "]" << std::endl;
-  
-  // logl matrix will be same shape as input cooc-matrix
-  std::unique_ptr<sparse_matrix> L(new sparse_matrix(S->cols(), S->cols()));
-  // populate sparse matrix
-  L->setFromTriplets(ijvs.begin(), ijvs.end());
-  L->makeCompressed();
-  return L;
-}
-
-
-//////////////////////////////////////
-// sparse matrix from filtered input
-//////////////////////////////////////
-
-std::unique_ptr<sparse_matrix> hipass_filter(std::unique_ptr<sparse_matrix>& C, std::unique_ptr<sparse_matrix>& L, const double logl) {
-  // iterate L and create new matrix F from C where L exceeds threshold
-
-  triplet_vec ijvs;
-  ijvs.reserve(L->cols());
-  
-  for (int j = 0; j < L->outerSize(); ++j) {
-    
-    //sparse_vector u = L->col(j); // column vector
-
-    for (sparse_matrix::InnerIterator it(*L, j); it; ++it) {
-      int i = it.index();      // row index
-      double llr = it.value(); // value
-      assert(it.col() == j);  // XXX
-      // if logl threhold reached add source matrix value to output
-      if (llr > logl) ijvs.push_back(triplet(i, j, C->coeffRef(i,j)));
-    }
-  }
-  
-  // create and populate sparse matrix  
-  std::unique_ptr<sparse_matrix> F(new sparse_matrix(L->cols(), L->cols()));
-  F->setFromTriplets(ijvs.begin(), ijvs.end());
-  F->makeCompressed();
-  return F;
 }
 
 ////////////////////////////////////////
@@ -419,11 +307,6 @@ int main(int argc, char** argv) {
               \tusing aggfunc to reduce feature occurrence values in sample, feature, value input.")
     ("aggfunc", po::value<std::string>()->default_value("max"),
      "feature aggregation operator: one of: max, min, sum, avg, cnt <max>")
-    ("logl", po::value<double>(),
-     "compute log likelihood of 1st order co-occurrence matrix and use the given threshold\
-      to filter statistically significant co-occurrences")
-    ("logl_eps", po::value<double>()->default_value(1),
-     "lower bound of eps in logl matrix to assist sparsity")
 
     ("reference", po::value<std::string>(), "file of reference observations (should be a valid path)");
 
@@ -498,7 +381,3 @@ int main(int argc, char** argv) {
   return 0;
 }
 
-
-/* Local Variables: */
-/* compile-command: "(cd build; make)" */
-/* End: */

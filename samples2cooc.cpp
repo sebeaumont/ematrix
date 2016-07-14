@@ -2,6 +2,7 @@
 
 // std libs
 
+#include <memory>
 #include <iostream>
 #include <fstream>
 #include <vector>

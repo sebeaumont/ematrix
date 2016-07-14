@@ -33,16 +33,35 @@ public:
     }
   }
   
-  // (de-)serialize
+  // serialize
+  
   inline const bool serialize(std::ostream& outs=std::cout) {
     // write out L's in ascending index order
     if (outs.good()) { 
       for (auto const& entry: _right) {
-        outs << entry.first << "\t" << entry.second << std::endl;
+        outs << entry.first << "\t" << entry.second << "\n"; // avoid endl flush!
       }
       return true;
     } else return false;
   }
+
+
+  // de-serialize
   
+  inline const bool deserialize(std::istream& ins=std::cin) {
+    if (ins.good()) {
+
+      std::size_t idx;
+      L feature;
+      
+      _left.clear();
+      _right.clear();
+      
+      while (ins >> idx >> feature)
+        insert(feature, idx); 
+      return true;
+      
+    } else return false;
+  }
 };
 
