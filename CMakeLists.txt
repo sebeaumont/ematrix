@@ -142,6 +142,10 @@ target_link_libraries(cooc2logl ${Boost_LIBRARIES})
 add_executable (loglfilter loglfilter.cpp)
 target_link_libraries(loglfilter ${Boost_LIBRARIES})
 
+# cosine scores
+add_executable (AB_cosine AB_cosine.cpp)
+target_link_libraries(AB_cosine ${Boost_LIBRARIES})
+
 
 # feature space inspector
 add_executable (show_features show_features.cpp)
