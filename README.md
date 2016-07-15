@@ -2,13 +2,15 @@
 
 ## TODO
 
-1. Split the monolith into sparse matrix pipeline
-   Example: Reuse LogL filters on cosine corpus comparison
-
+- End to End verification and validation
+- Scale test w.r.t to Isobel corpus
 
 ## DONE
 
 - Co-occurrence from input triples
 - Aggregation operators
 - LogLiklihood filtering 
-- Sparse matrix io module to (de-)serialize Eigen3 sparse matrices (New!)
+- Sparse matrix io module to (de-)serialize Eigen3 sparse matrices
+- Split the monolith into stdio sparse matrix pipeline (New)
+- (De-)serialize feature maps (New) 
+
