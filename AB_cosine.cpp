@@ -1,4 +1,4 @@
-// co-occurrence + loglikelihood matrix + threshold -> filtered co-occurence matrix
+// AB_cosine feature vector comparison
 
 // std libs
 
@@ -48,18 +48,13 @@ inline const double cosine_similarity(const sparse_vector& u, const sparse_vecto
 ///////////////////////////////////////////
 // sparse feature matrix cosine comparison
 
-void cosine_scores(sparse_matrix& A, sparse_matrix& B, std::ostream& outs=std::cout) {
+void cosine_scores(sparse_matrix& A, sparse_matrix& B, feature_map& fmap, std::ostream& outs=std::cout) {
 
   // TODO make this more friendly!
   assert(A.size() == B.size());
 
   const int n = A.cols();
 
-  /*
-  std::vector<double> scores;
-  scores.reserve(n);
-  */
-  
   // iterate over column (feature) vectors
   // -- N.B. this is embarassingly parallel
 
@@ -69,10 +64,9 @@ void cosine_scores(sparse_matrix& A, sparse_matrix& B, std::ostream& outs=std::c
     sparse_vector v = B.col(i);
 
     const double cs = cosine_similarity(u, v, n);
-    //    scores.push_back(cs);
     
     // output scores
-    outs << cs << "\t"  << u.sum() << "\t" << v.sum() << std::endl;
+    outs << fmap.right(i) << "\t" << cs << "\t"  << u.sum() << "\t" << v.sum() << "\n";
   }
 }
 
@@ -90,9 +84,8 @@ int main(int argc, char** argv) {
   
   desc.add_options()
     ("help", "Compare feature vectors in matrices using cosine simliarity measure")
-
-    ("reference", po::value<std::string>(),
-     "filename of A (reference) matrix");
+    ("features", po::value<std::string>(), "filename of feature list")
+    ("reference", po::value<std::string>(), "filename of A (reference) matrix");
 
 
   // parse command line
@@ -110,11 +103,27 @@ int main(int argc, char** argv) {
   } else if (!opts.count("reference")) {
     std::cerr << "reference matrix is a required parameter!" << std::endl;
     return 1;
+
+  } else if (!opts.count("features")) {
+    std::cerr << "feature list is a required parameter!" << std::endl;
     
   } else {
 
     std::string amatrix = opts["reference"].as<std::string>();
+    std::string feature_file = opts["features"].as<std::string>();
 
+    std::cerr << "load features from: " << feature_file << std::endl;
+    feature_map features;
+    std::ifstream fin;
+    fin.open(feature_file);
+    
+    if (!features.deserialize(fin)) {
+      std::cerr << "failed to load features from: " << feature_file << std::endl;
+      return 3;
+    }
+    
+    fin.close();
+      
     std::cerr << "deserialize (A) matrix from: " << amatrix << "..." << std::endl;
     std::ifstream ins;
     ins.open(amatrix);
@@ -128,7 +137,7 @@ int main(int argc, char** argv) {
         
         if (deserialize_matrix(B)) {   
 
-          cosine_scores(A, B);
+          cosine_scores(A, B, features);
           
         } else std::cerr << "failed to deserialise (B) matrix!" << std::endl;
         
