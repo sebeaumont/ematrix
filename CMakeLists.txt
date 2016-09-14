@@ -155,6 +155,9 @@ add_executable (show_features show_features.cpp)
 add_executable (showmat showmat.cpp)
 
 
+# matrix dump
+add_executable (dumpmat dumpmat.cpp)
+
 
 # test io
 add_executable (testio testio.cpp)

@@ -8,6 +8,8 @@
 #include <vector>
 #include <set>
 #include <cmath>
+#include <limits>
+
 
 // contrib library headers
 
@@ -25,18 +27,18 @@
 // for Dunning style log likelihood ratio computation
 
 // x log x
-static inline double xlogx(double x) {
-  return x == 0 ? 0.0 : x * log(x);
+static inline double xlog(double x) {
+  return x == 0 ? 0.0 : x * log(x);  // log 0 -> 0
 }
 
 // Shannon entropy...
 static inline double entropy2(double a, double b) {
-  return xlogx(a + b) - xlogx(a) - xlogx(b);
+  return xlog(a + b) - xlog(a) - xlog(b);
 }
   
 
 static inline double entropy4(double a, double b, double c, double d) {
-  return xlogx(a + b + c + d) - xlogx(a) - xlogx(b) - xlogx(c) - xlogx(d);
+  return xlog(a + b + c + d) - xlog(a) - xlog(b) - xlog(c) - xlog(d);
 }
 
 static inline double log_likelihood_ratio(double k11, double k12, double k21, double k22) {
@@ -54,20 +56,20 @@ static inline double log_likelihood_ratio(double k11, double k12, double k21, do
 /////////////////////////////
 
 std::unique_ptr<sparse_matrix> logl_matrix(const sparse_matrix& S,
-                                           const vector& feature_totals,
-                                           const double llr_eps) {
-  // total all features
+                                           const vector& feature_totals) {
+
+  // total of all features
   scalar_t te = feature_totals.sum();
   // accumulate ijvs for logl_matrix based on S and totals
   triplet_vec ijvs;
   ijvs.reserve(S.cols());
 
-  // keep track of max logl
+  // keep track of logl range by updating these as we compute it
   double max_llr = 0;
-  double min_llr = 10E20;
+  double min_llr = DBL_MAX; 
   
-  // foreach feature -> feature occurrence count witnessed by
-  // we can iterate over the CSC matrix where s[i,j] != 0
+  // foreach feature -> feature occurrence count witnessed by entries in matrix S
+  // iterate over the nonzero sparse (CSC) input matrix where S[i,j] != 0
 
   for (int i = 0; i < S.cols(); ++i) {
     
@@ -88,8 +90,14 @@ std::unique_ptr<sparse_matrix> logl_matrix(const sparse_matrix& S,
       // update max llr
       if (llr > max_llr) max_llr = llr;
       if (llr < min_llr) min_llr = llr;
-      // help sparsity of L and only save if greater than lower bound llr_eps
-      if (llr > llr_eps) ijvs.push_back(triplet(j, i, llr));
+      
+      // seb: this may be a mis-feature since I really want to see all the values of
+      // LOGL (llr) including any anti-correlations so I am supressing this for now
+      
+      // help sparsity of L and only save if greater than lower bound: llr_eps
+      // if (llr > llr_eps) ijvs.push_back(triplet(j, i, llr));
+
+      ijvs.push_back(triplet(j, i, llr));
     }
   }
 
@@ -116,11 +124,11 @@ int main(int argc, char** argv) {
   po::options_description desc("Allowed options");
   
   desc.add_options()
-    ("help", "compute loglikelihood matrix from coocurence matrix using stdio")
-
+    ("help", "compute loglikelihood matrix from coocurence matrix using stdio");
+  /*
     ("logl_eps", po::value<double>()->default_value(1),
      "lower bound of logl in matrix to assist sparsity");
-
+  */
 
 
   // parse command line
@@ -137,7 +145,7 @@ int main(int argc, char** argv) {
     
   } else {
 
-    double logl_eps = opts["logl_eps"].as<double>();
+    //double logl_eps = opts["logl_eps"].as<double>();
     // compute logl of co-occurence and output both matrices
     
     std::cerr << "deserialise (1st order) co-occurrence matrix from stdin..." << std::endl;
@@ -154,7 +162,7 @@ int main(int argc, char** argv) {
     vector feature_totals = ((A) * ones) + (A.transpose() * ones);
 
     // compute logl matrix
-    std::unique_ptr<sparse_matrix> L = logl_matrix(A, feature_totals, logl_eps);
+    std::unique_ptr<sparse_matrix> L = logl_matrix(A, feature_totals);
     
     std::cerr << "save logL matrix: " << L->nonZeros()
               << " density: " << 100 * ((double) L->nonZeros() / L->size()) << "%" << std::endl; 
