@@ -11,26 +11,26 @@ using namespace std;
 
 void show_matrix(const sparse_matrix& M, ostream& outs=cerr) {
   
-    outs << M.nonZeros() << endl;   
-    outs << M.size() << endl;
-    outs << 100 * ((float) M.nonZeros() / M.size()) << endl;
+  outs << "nonz:\t" << M.nonZeros() << endl;   
+  outs << "size:\t" << M.size() << endl;
+  outs << "rho:\t" << 100 * ((float) M.nonZeros() / M.size()) << endl;
 
-    scalar_t max_v = 0;
-    scalar_t min_v = 10E20; //hmm need a max scalar_t!
+  scalar_t max_v = 0;
+  scalar_t min_v = 10E20; //hmm need a max scalar_t!
     
-    // iterate non-zero values to accumulate value stats
-    for (int j = 0; j < M.outerSize(); ++j) {
-      for (sparse_matrix::InnerIterator it(M, j); it; ++it) {
-        //it.index();
-        scalar_t v = it.value();
-        max_v = (v > max_v) ? v : max_v;
-        min_v = (v < min_v) ? v : min_v;
-      }
-    }   
-    outs << min_v << endl;
-    outs << max_v << endl;
+  // iterate non-zero values to accumulate value stats
+  for (int j = 0; j < M.outerSize(); ++j) {
+    for (sparse_matrix::InnerIterator it(M, j); it; ++it) {
+      //it.index();
+      scalar_t v = it.value();
+      max_v = (v > max_v) ? v : max_v;
+      min_v = (v < min_v) ? v : min_v;
+    }
+  }   
+  outs << "min:\t" << min_v << endl;
+  outs << "max:\t" << max_v << endl;
 }
-    
+
 
 
 int main(int argc, char *argv[]) {
