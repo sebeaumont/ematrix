@@ -17,17 +17,16 @@ void show_feature_matrix(const sparse_matrix& F,
                          const feature_map& features,
                          const sparse_matrix& L,
                          std::ostream& outs=cout) {
-
   // iterate non-zero values...
   for (int j = 0; j < F.outerSize(); ++j) {
     for (sparse_matrix::InnerIterator it(F, j); it; ++it) {
-      outs << it.value() << "\t" << features.right(j) << "\t" << features.right(it.index()); 
-      if (L.size()) outs << "\t" <<  L.coeff(it.index(), j);   
-      outs << "\n";
+      if (L.size()) outs <<  L.coeff(it.index(), j) << "\t";   
+      outs << it.value() << "\t" << features.right(j) << "\t" << features.right(it.index()) << "\n"; 
     }
   }
 }
-  
+
+
 int main(int argc, char *argv[]) {
 
   sparse_matrix B, L;
@@ -74,7 +73,7 @@ int main(int argc, char *argv[]) {
       
     } else cerr << "cannot read file: " << filename << "!" << endl;
     
-
   } else cerr << "required argument: feature_file" << endl;
+  
   return 1;
 }
