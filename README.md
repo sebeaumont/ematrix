@@ -7,6 +7,8 @@
 - loglfilter    - filter input co-occurrence matrix based on logl threshold
 - AB-cosine     - compare feature vectors in co-occurrence matrix
 - show_features - human readable feature vectors using co-occurrence matrix and feature list
+- dumpmat       - dump matrix contents to stdout useful for eyeballing computations and debugging
+
 
 ### TODO
 
