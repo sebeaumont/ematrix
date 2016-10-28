@@ -42,7 +42,7 @@ int main(int argc, char *argv[]){
     outs.open("matrix", std::ios::binary | std::ios::out);
 
     // write the matrix
-    assert(serialize(A, outs));
+    assert(serialize_matrix(A, outs));
     outs.close();
     
     // open input file
@@ -50,7 +50,7 @@ int main(int argc, char *argv[]){
     ins.open("matrix", std::ios::binary | std::ios::in);
 
     // read matrix
-    assert(deserialize(B, ins));
+    assert(deserialize_matrix(B, ins));
     ins.close();
     
     cout << B.nonZeros() << endl;   
