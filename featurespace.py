@@ -18,7 +18,7 @@ class featuremap:
 
     def ensure_feature(self, name):
         fid = self._map.get(name, None)
-        if fid:
+        if fid != None:
             return fid
         else:
             self._map[name] = self._index
@@ -63,7 +63,7 @@ def samples2cooc(ins=sys.stdin):
 
         # get feature index
         fi = features.ensure_feature(feature)
-
+        
         if start:
             last_frame = frame
             start = False
