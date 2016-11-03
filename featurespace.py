@@ -47,6 +47,8 @@ def reify_frame(C, frame_indexes):
     # extend list with reified symmetic relation
     feature_v = sorted(frame_indexes)
     for i, j in combinations(feature_v, 2):
+        # since the relationship is cleary symmetric is there
+        # a smarter, sparser, way of doing this?
         C[i,j] += 1
         C[j,i] += 1
 
