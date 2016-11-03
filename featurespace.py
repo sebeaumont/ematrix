@@ -28,30 +28,48 @@ class featuremap:
     def size(self):
         return self._index
 
-    
 
-def reify_frame(index_list, frame_indexes):
+
+def make_featuremap(ins=sys.stdin):
+    fm = featuremap()    
+    for line in ins:
+        feature = line.strip().split('\t')[0]
+        fm.ensure_feature(feature)
+    return fm._map
+
+
+def load_featuremap(ins=sys.stdin):
+    return {k:int(v) for v,k in (line.strip().split('\t') for line in ins)}
+
+
+def reify_frame(C, frame_indexes):
+    "Inplace update of C matrix"
     # extend list with reified symmetic relation
     feature_v = sorted(frame_indexes)
-    index_list.extend([ij for ij in combinations(feature_v, 2)])
-    feature_v.reverse()
-    index_list.extend([ij for ij in combinations(feature_v, 2)])
+    for i, j in combinations(feature_v, 2):
+        C[i,j] += 1
+        C[j,i] += 1
+
 
 
 ############
 # Step 1.
 #
 
-def samples2cooc(ins=sys.stdin):
-    "Take a stream of tsv samples on ins and return featuremap and cooc matrix."
+def samples2cooc(features, ins=sys.stdin):
+    """Take a stream of tsv samples on ins and a dict to map features to
+    their canonical array index position returns: cooc matrix."""
+    
     # frame\tfeature\tvalue
 
     start = True
     last_frame = None
-    features = featuremap()
 
-    # accumulated i,j pairs
-    ij_pairs = []
+    #features = featuremap()
+    n_feats = len(features)
+    
+    # The cooc matrix
+    C = sp.dok_matrix((n_feats, n_feats), dtype=np.float32)
     
     # recycled list of indexes (features) in frame
     frame_indexes = []
@@ -61,8 +79,8 @@ def samples2cooc(ins=sys.stdin):
         # N.B. we ignore values and assume 1
         frame, feature, _ = line.strip().split('\t')
 
-        # get feature index
-        fi = features.ensure_feature(feature)
+        # get feature index -- may fail!
+        fi = features[feature]
         
         if start:
             last_frame = frame
@@ -71,7 +89,9 @@ def samples2cooc(ins=sys.stdin):
         elif frame != last_frame:
             # Done with frame...
             # N.B. create combinations of coocurrences to add to i,j,v arrays
-            reify_frame(ij_pairs, frame_indexes)
+            reify_frame(C, frame_indexes)
+            sys.stderr.write('[{:s}]'.format(last_frame))
+            sys.stderr.flush()
             # clear for next frame
             frame_indexes = []
 
@@ -80,16 +100,17 @@ def samples2cooc(ins=sys.stdin):
         frame_indexes.append(fi)
         
     # final output at end of input 
-    reify_frame(ij_pairs, frame_indexes)
+    reify_frame(C, frame_indexes)
     
-    print("cooc:", len(ij_pairs), "features:", features.size())
+    print("cooc:", C.shape)
     
+    return C
     # create a sparse IJV (coordinate) matrix to return. N.B. dups get summed over
-    C = sp.coo_matrix(([1]*len(ij_pairs), ([i for i, j in ij_pairs], [j for i, j in ij_pairs])),
-                      shape=(features.size(), features.size()), dtype=np.double)
+    #C = sp.coo_matrix(([1]*len(ij_pairs), ([i for i, _ in ij_pairs], [j for _, j in ij_pairs])),
+    #                  shape=(features.size(), features.size()), dtype=np.double)
     
     # should be all we need now
-    return C, features._map
+    #return C, features._map
 
 
 
