@@ -91,8 +91,10 @@ def samples2cooc(features, ins=sys.stdin):
         elif frame != last_frame:
             # Done with frame...
             # N.B. create combinations of coocurrences to add to i,j,v arrays
+            sys.stderr.write('[{:s}'.format(last_frame))
+            sys.stderr.flush()
             reify_frame(C, frame_indexes)
-            sys.stderr.write('[{:s}]'.format(last_frame))
+            sys.stderr.write(':{:d}]'.format(len(frame_indexes)))
             sys.stderr.flush()
             # clear for next frame
             frame_indexes = []
