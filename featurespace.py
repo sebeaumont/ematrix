@@ -45,7 +45,7 @@ def load_featuremap(ins=sys.stdin):
 def reify_frame(C, frame_indexes):
     "Inplace update of C matrix"
     # extend list with reified symmetic relation
-    feature_v = sorted(frame_indexes)
+    feature_v = set(sorted(frame_indexes)) # eliminate symmetry
     for i, j in combinations(feature_v, 2):
         # since the relationship is cleary symmetric is there
         # a smarter, sparser, way of doing this?
@@ -180,3 +180,10 @@ def cooc2logl(C):
                       dtype=np.double,
                       shape=C.shape)
     return L
+
+
+def filtered(C, L, threshold):
+    "filter values from matrices where logl exceeds threshold"
+    return ((v, C[i,j], i, j) for i, j, v in zip(*sp.find(L)) if v >= threshold)
+
+            
