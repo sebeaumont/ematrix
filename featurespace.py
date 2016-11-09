@@ -45,7 +45,7 @@ def load_featuremap(ins=sys.stdin):
 def reify_frame(C, frame_indexes):
     "Inplace update of C matrix"
     # extend list with reified symmetic relation
-    feature_v = set(sorted(frame_indexes)) # eliminate symmetry
+    feature_v = set(sorted(frame_indexes)) # eliminate reflection
     for i, j in combinations(feature_v, 2):
         # since the relationship is cleary symmetric is there
         # a smarter, sparser, way of doing this?
@@ -71,7 +71,7 @@ def samples2cooc(features, ins=sys.stdin):
     n_feats = len(features)
     
     # The cooc matrix
-    C = sp.dok_matrix((n_feats, n_feats), dtype=np.float32)
+    C = sp.dok_matrix((n_feats, n_feats), dtype=np.int32)
     
     # recycled list of indexes (features) in frame
     frame_indexes = []
@@ -153,14 +153,16 @@ def cooc2logl(C):
     "compute logl matrix from co-occurence matrix"
 
     # 1. need column/feature totals
-    totals = C.sum(axis=0) # weird: but this is a degenate matrix with one row!
+    # totals = C.sum(axis=0) # weird: but this is a degenate matrix with one row!
+    # this is same but faster...
+    totals = C.sum(axis=1).flatten()
     occurs = totals.sum()
     
     # accumulate i,j,llr
     triples = []
     
     # N.B. speedy iteration over sparse entries
-    for i, j, v in zip(C.row, C.col, C.data):
+    for i, j, v in  zip(*sp.find(C)):
         
         k_11 = v                                 # occurrences of A (i) and B (j) together
         k_12 = totals[0,j] - v                   # B but not A
@@ -176,7 +178,8 @@ def cooc2logl(C):
 
 
     # make the L matrix
-    L = sp.coo_matrix(([l for i, j, l in triples], ([i for i, j, l in triples], [j for i, j, l in triples])),
+    L = sp.coo_matrix(([l for _, _, l in triples],
+                       ([i for i, _, _ in triples], [j for _, j, _ in triples])),
                       dtype=np.double,
                       shape=C.shape)
     return L
