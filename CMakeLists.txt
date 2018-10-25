@@ -32,7 +32,7 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   # TODO for clang these are clang specific
   # set(MY_CXX_FLAGS "-Rpass=.*") # have clang show optimizations
   # set(MY_CXX_FLAGS "-fsanitize=address") doesn't work with apple 3.6 compiler!
-  set(MY_ALL_FLAGS "${MY_ALL_FLAGS} -funroll-loops -fvectorize -fslp-vectorize -fslp-vectorize-aggressive")
+  set(MY_ALL_FLAGS "${MY_ALL_FLAGS} -funroll-loops -fvectorize -fslp-vectorize")
 endif()
 
 
