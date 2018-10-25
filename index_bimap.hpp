@@ -32,6 +32,9 @@ public:
       return i;
     }
   }
+
+  
+  inline const std::size_t size() { return _left.size(); }
   
   // serialize
   
