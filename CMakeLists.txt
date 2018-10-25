@@ -163,6 +163,9 @@ add_executable (dumpmat dumpmat.cpp)
 add_executable (testio testio.cpp)
 
 
+# matrix convert to matrix market
+add_executable (mat2mtx mat2mtx.cpp)
+
 
 
 
